@@ -1,0 +1,48 @@
+{
+  "name": "npm-version-action",
+  "version": "0.0.0",
+  "description": "A GitHub action for automatically versioning repos after PRs are merged",
+  "scripts": {
+    "check": "npm run lint && npm run coverage",
+    "coverage": "npm run test -- --coverage --silent",
+    "test": "jest --passWithNoTests",
+    "test:watch": "npm test -- --watch",
+    "lint": "eslint **/*.js --ignore-path .gitignore",
+    "lint:fix": "npm run lint -- --fix"
+  },
+  "repository": "github:sam-doomguy/npm-version-action",
+  "author": "Sam M. R.",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^25.2.1",
+    "eslint": "^6.8.0",
+    "eslint-config-prettier": "^6.10.1",
+    "eslint-plugin-jest": "^23.8.2",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-prettier": "^3.1.2",
+    "eslint-plugin-security": "^1.4.0",
+    "husky": "^4.2.3",
+    "jest": "^25.2.7",
+    "lint-staged": "^10.1.1",
+    "prettier": "^2.0.2"
+  },
+  "engines": {
+    "node": ">=12.0.0"
+  },
+  "lint-staged": {
+    "**/*.js": [
+      "npm run lint:fix"
+    ]
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged",
+      "pre-push": "npm run check"
+    }
+  },
+  "dependencies": {
+    "@actions/core": "^1.2.3",
+    "@actions/github": "^2.1.1",
+    "winston": "^3.2.1"
+  }
+}
