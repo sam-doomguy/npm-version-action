@@ -9588,8 +9588,11 @@ const resolveVersionType = commits => {
 };
 
 /**
- * Determines whether the specified set of commits require a version.
- * If any of the commits begin with a semver (X.X.X), returns false.
+ * Determines whether the specified set of commits require a new version.
+ * Following cases do not need a new version:
+ * - Any of the commits begin with a semver (X.X.X), returns false.
+ * - Push was forced
+ * - There is no commit
  *
  * @param {*} gitHubEvent GitHub push event
  * @param {*[]} gitHubEvent.commits Array of GitHub commits
@@ -9602,6 +9605,10 @@ const needsVersion = gitHubEvent => {
 		logger.debug("Push was forced");
 		return false;
 	}
+	if (!Array.isArray(commits) || commits.length === 0) {
+		logger.debug("No commit was detected");
+		return false;
+	}
 	const versionPattern = /^\d+\.\d+\.\d+(\s|$)/;
 	const hasVersionCommit = commits.some(commit => versionPattern.test(commit.message));
 	if (hasVersionCommit) {
@@ -9610,9 +9617,24 @@ const needsVersion = gitHubEvent => {
 	return !hasVersionCommit;
 };
 
+/**
+ * Determines whether the specified set of commits require a version.
+ * If any of the commits begin with a semver (X.X.X), returns false.
+ *
+ * @param {*} gitHubEvent GitHub push event
+ * @param {*} gitHubEvent.head_commit Head commit of the push
+ * @param {{email:string, name:string}} gitHubEvent.head_commit.author Author of the head commit
+ * @return {{email:string, name:string}}
+ */
+const resolveAuthor = gitHubEvent => {
+	const { email, name } = gitHubEvent.head_commit.author;
+	return { email, name };
+};
+
 module.exports = {
 	resolveVersionType,
-	needsVersion
+	needsVersion,
+	resolveAuthor
 };
 
 
@@ -22220,6 +22242,30 @@ const logExecResults = (stdout, stderr) => {
 };
 
 /**
+ * Sets local git user identity
+ *
+ * @param email
+ * @param name
+ * @return {Promise<void>}
+ */
+const setGitUser = async (email, name) => {
+	await setGitConfig("user.email", email);
+	await setGitConfig("user.name", name);
+};
+
+/**
+ * Sets a local git configuration variable
+ *
+ * @param {string} name
+ * @param {string} value
+ * @return {Promise<void>}
+ */
+const setGitConfig = async (name, value) => {
+	const { stdout, stderr } = await exec(`git config --local ${name} "${value}"`);
+	logExecResults(stdout, stderr);
+};
+
+/**
  * Creates a git tag using npm version command with the specified version type
  * @param {string} versionType patch, minor, or major. Defaults to patch
  * @return {Promise<string>} Created version, e.g. v1.2.3
@@ -22243,6 +22289,7 @@ const pushTag = async tagName => {
 };
 
 module.exports = {
+	setGitUser,
 	createVersion,
 	pushHead,
 	pushTag
@@ -44736,22 +44783,26 @@ module.exports = exports['default'];
 const core = __webpack_require__(470);
 const github = __webpack_require__(469);
 const logger = __webpack_require__(541);
-const { resolveVersionType, needsVersion } = __webpack_require__(195);
-const { createVersion, pushHead, pushTag } = __webpack_require__(504);
+const { resolveVersionType, needsVersion, resolveAuthor } = __webpack_require__(195);
+const { createVersion, pushHead, pushTag, setGitUser } = __webpack_require__(504);
 
 const main = async () => {
 	try {
-		logger.debug("Event payload: %o", github.context.payload);
-		const { commits } = github.context.payload;
-		logger.info("Got %d commits", commits.length);
-		const shouldVersion = needsVersion(github.context.payload);
+		const event = github.context.payload;
+		logger.debug("Event payload: %o", event);
+		const { commits } = event;
+		logger.info("Got %d commits", (commits || []).length);
+		const shouldVersion = needsVersion(event);
 		if (!shouldVersion) {
-			logger.info("Changes contain a version commit or were force-pushed");
+			logger.info("Changes contain no commits, a version commit, or were force-pushed");
 			logger.info("Skipping automatic versioning");
 			return;
 		}
 		const versionType = resolveVersionType(commits);
 		logger.info("Resolved version type: %s", versionType);
+		const { email, name } = resolveAuthor(event);
+		logger.info("Setting git user %s <%s>...", name, email);
+		await setGitUser(email, name);
 		logger.info("Creating a new version...");
 		const version = await createVersion(versionType);
 		logger.info("Created version: %s", version);
