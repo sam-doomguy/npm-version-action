@@ -7,14 +7,17 @@
     "coverage": "npm run test -- --coverage --silent",
     "test": "jest --passWithNoTests",
     "test:watch": "npm test -- --watch",
-    "lint": "eslint **/*.js --ignore-path .gitignore",
-    "lint:fix": "npm run lint -- --fix"
+    "lint": "eslint \"src/**/*.js\" \"test/**/*.js\" --ignore-path .gitignore --no-error-on-unmatched-pattern",
+    "lint:fix": "npm run lint -- --fix",
+    "build": "ncc build src/index.js",
+    "version": "npm run build && git add dist"
   },
   "repository": "github:sam-doomguy/npm-version-action",
   "author": "Sam M. R.",
   "license": "MIT",
   "devDependencies": {
     "@types/jest": "^25.2.1",
+    "@zeit/ncc": "^0.22.0",
     "eslint": "^6.8.0",
     "eslint-config-prettier": "^6.10.1",
     "eslint-plugin-jest": "^23.8.2",
@@ -31,7 +34,7 @@
   },
   "lint-staged": {
     "**/*.js": [
-      "npm run lint:fix"
+      "eslint --fix"
     ]
   },
   "husky": {
