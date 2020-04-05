@@ -9560,7 +9560,63 @@ module.exports = [
 /* 192 */,
 /* 193 */,
 /* 194 */,
-/* 195 */,
+/* 195 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const logger = __webpack_require__(541);
+
+/**
+ * Resolves version type required for the specified commits based on Semantic Versions standard.
+ * If any commit has "BREAKING CHANGE" in it, return "major"
+ * If any commit starts with "feat:", return "minor"
+ * Otherwise return "patch"
+ *
+ * If a commit message starts with "feat:", the version
+ * @param {*[]} commits Array of GitHub commits
+ * @return {string} Version type: patch, minor, or major
+ */
+const resolveVersionType = commits => {
+	const hasBreakingChange = commits.some(commit => commit.message.includes("BREAKING CHANGE"));
+	if (hasBreakingChange) {
+		return "major";
+	}
+	const hasFeature = commits.some(commit => commit.message.startsWith("feat:"));
+	if (hasFeature) {
+		return "minor";
+	}
+	return "patch";
+};
+
+/**
+ * Determines whether the specified set of commits require a version.
+ * If any of the commits begin with a semver (X.X.X), returns false.
+ *
+ * @param {*} gitHubEvent GitHub push event
+ * @param {*[]} gitHubEvent.commits Array of GitHub commits
+ * @param {boolean} gitHubEvent.forced Whether the push was forced
+ * @return {boolean} true if the specified commits need versioning, false otherwise
+ */
+const needsVersion = gitHubEvent => {
+	const { forced, commits } = gitHubEvent;
+	if (forced) {
+		logger.debug("Push was forced");
+		return false;
+	}
+	const versionPattern = /^\d+\.\d+\.\d+(\s|$)/;
+	const hasVersionCommit = commits.some(commit => versionPattern.test(commit.message));
+	if (hasVersionCommit) {
+		logger.debug("Version commit detected");
+	}
+	return !hasVersionCommit;
+};
+
+module.exports = {
+	resolveVersionType,
+	needsVersion
+};
+
+
+/***/ }),
 /* 196 */
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
@@ -22144,7 +22200,56 @@ module.exports = Symbol;
 /* 501 */,
 /* 502 */,
 /* 503 */,
-/* 504 */,
+/* 504 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+// Child process needed to execute git commands
+/* eslint-disable security/detect-child-process */
+
+const { promisify } = __webpack_require__(669);
+const exec = promisify(__webpack_require__(129).exec);
+const logger = __webpack_require__(541);
+
+const logExecResults = (stdout, stderr) => {
+	if (stdout) {
+		logger.debug(stdout);
+	}
+	if (stderr) {
+		logger.debug(stderr);
+	}
+};
+
+/**
+ * Creates a git tag using npm version command with the specified version type
+ * @param {string} versionType patch, minor, or major. Defaults to patch
+ * @return {Promise<string>} Created version, e.g. v1.2.3
+ */
+const createVersion = async (versionType = "patch") => {
+	const { stdout, stderr } = await exec(`npm version ${versionType}`);
+	logExecResults(stdout, stderr);
+	const version = stdout
+		.split("\n")
+		.filter(line => line)
+		.pop();
+	return version;
+};
+const pushHead = async () => {
+	const { stdout, stderr } = await exec("git push origin HEAD");
+	logExecResults(stdout, stderr);
+};
+const pushTag = async tagName => {
+	const { stdout, stderr } = await exec(`git push origin ${tagName}`);
+	logExecResults(stdout, stderr);
+};
+
+module.exports = {
+	createVersion,
+	pushHead,
+	pushTag
+};
+
+
+/***/ }),
 /* 505 */,
 /* 506 */,
 /* 507 */,
@@ -23093,8 +23198,9 @@ exports.HttpClient = HttpClient;
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
 const { format, transports, createLogger } = __webpack_require__(264);
+const level = process.env.DEBUG ? "debug" : "info";
 const logger = createLogger({
-	level: "info",
+	level,
 	format: format.combine(format.splat(), format.simple()),
 	transports: [new transports.Console()]
 });
@@ -24964,18 +25070,8 @@ module.exports = function btoa(str) {
 /* 676 */
 /***/ (function(__unusedmodule, __unusedexports, __webpack_require__) {
 
-const core = __webpack_require__(470);
-const github = __webpack_require__(469);
-const logger = __webpack_require__(541);
-
-(async () => {
-	try {
-		core.setOutput("version", "v0.0.0");
-		logger.info("The event payload %s", JSON.stringify(github.context.payload, null, 2));
-	} catch (error) {
-		core.setFailed(error.message);
-	}
-})();
+const action = __webpack_require__(928);
+action();
 
 
 /***/ }),
@@ -44634,7 +44730,46 @@ module.exports = exports['default'];
 
 /***/ }),
 /* 927 */,
-/* 928 */,
+/* 928 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const core = __webpack_require__(470);
+const github = __webpack_require__(469);
+const logger = __webpack_require__(541);
+const { resolveVersionType, needsVersion } = __webpack_require__(195);
+const { createVersion, pushHead, pushTag } = __webpack_require__(504);
+
+const main = async () => {
+	try {
+		logger.debug("Event payload: %o", github.context.payload);
+		const { commits } = github.context.payload;
+		logger.info("Got %d commits", commits.length);
+		const shouldVersion = needsVersion(github.context.payload);
+		if (!shouldVersion) {
+			logger.info("Changes contain a version commit or were force-pushed");
+			logger.info("Skipping automatic versioning");
+			return;
+		}
+		const versionType = resolveVersionType(commits);
+		logger.info("Resolved version type: %s", versionType);
+		logger.info("Creating a new version...");
+		const version = await createVersion(versionType);
+		logger.info("Created version: %s", version);
+		core.setOutput("version", version);
+		logger.info("Pushing changes to remote...");
+		await pushHead();
+		await pushTag(version);
+		logger.info("Action completed successfully");
+	} catch (error) {
+		logger.error("Error %o", error);
+		core.setFailed(error.message);
+	}
+};
+
+module.exports = main;
+
+
+/***/ }),
 /* 929 */
 /***/ (function(module, __unusedexports, __webpack_require__) {
 

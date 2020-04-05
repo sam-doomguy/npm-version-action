@@ -1,6 +1,6 @@
 {
   "name": "npm-version-action",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "A GitHub action for automatically versioning repos after PRs are merged",
   "scripts": {
     "check": "npm run lint && npm run coverage",
