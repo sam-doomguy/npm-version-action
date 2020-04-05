@@ -15,6 +15,30 @@ const logExecResults = (stdout, stderr) => {
 };
 
 /**
+ * Sets local git user identity
+ *
+ * @param email
+ * @param name
+ * @return {Promise<void>}
+ */
+const setGitUser = async (email, name) => {
+	await setGitConfig("user.email", email);
+	await setGitConfig("user.name", name);
+};
+
+/**
+ * Sets a local git configuration variable
+ *
+ * @param {string} name
+ * @param {string} value
+ * @return {Promise<void>}
+ */
+const setGitConfig = async (name, value) => {
+	const { stdout, stderr } = await exec(`git config --local ${name} "${value}"`);
+	logExecResults(stdout, stderr);
+};
+
+/**
  * Creates a git tag using npm version command with the specified version type
  * @param {string} versionType patch, minor, or major. Defaults to patch
  * @return {Promise<string>} Created version, e.g. v1.2.3
@@ -38,6 +62,7 @@ const pushTag = async tagName => {
 };
 
 module.exports = {
+	setGitUser,
 	createVersion,
 	pushHead,
 	pushTag
